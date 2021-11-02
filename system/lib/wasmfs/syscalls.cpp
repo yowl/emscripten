@@ -430,14 +430,9 @@ int wasmfs_create_file(char* pathname, mode_t mode, backend_t backend) {
   return doOpen(pathname, O_CREAT, mode, backend);
 }
 
-__wasi_fd_t __syscall_open(long pathname, long flags, ...) {
-  // Since mode is optional, mode is specified using varargs.
-  mode_t mode = 0;
-  va_list vl;
-  va_start(vl, flags);
-  mode = va_arg(vl, int);
-  va_end(vl);
-
+__wasi_fd_t __syscall_openat(long dirfd, long pathname, long flags, long mode) {
+  // TODO: implement fd-relative open
+  assert(dirfd == AT_FDCWD);
   return doOpen((char*)pathname, flags, mode);
 }
 
