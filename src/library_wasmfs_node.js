@@ -66,4 +66,19 @@ mergeInto(LibraryManager.library, {
   },
   // TODO: copy more stuff from library_nodefs.js
 
+
+  _wasmfs_node_readdir: (path) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(path, { withFileTypes: true });
+    } catch (e) {
+      if (!e.code) throw e;
+      throw new FS.ErrnoError(NODEFS.convertNodeCode(e));
+    }
+    for (let entry of entries) {
+      console.log(entry.name);
+    }
+  },
+
+
 });

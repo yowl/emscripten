@@ -11,9 +11,12 @@
 
 namespace wasmfs {
 
+class NodeBackend;
+
 extern "C" {
 
 // TODO: JS function declarations
+void _wasmfs_node_readdir(const char* path);
 
 } // extern "C"
 
@@ -41,12 +44,23 @@ private:
 };
 
 class NodeDirectory : public Directory {
+  std::string path;
+  std::optional<std::vector<Directory::Entry>> entries;
+
 public:
-  NodeDirectory(mode_t mode, backend_t backend) : Directory(mode, backend) {
-    // TODO: initialize node directory
-  }
+  NodeDirectory(mode_t mode, backend_t backend, std::string path)
+    : Directory(mode, backend), relativePath(path) {}
 
 private:
+  void maybeInitializeEntries() {
+    if (entries) {
+      return;
+    }
+    std::vector<std::string> names;
+    _wasmfs_node_readdir(path.c_str());
+    // TODO
+  }
+
   std::shared_ptr<File> getEntry(const std::string& name) override {
     // TODO
     return nullptr;
@@ -69,8 +83,8 @@ private:
   }
 
   size_t getNumEntries() override {
-    // TODO
-    return 0;
+    maybeInitializeEntries();
+    return entries->size();
   }
 
   std::vector<Directory::Entry> getEntries() override {
@@ -86,20 +100,27 @@ public:
   NodeBackend(const std::string& rootPath) : rootPath(rootPath) {}
 
   std::shared_ptr<DataFile> createFile(mode_t mode) override {
-    return std::make_shared<NodeFile>(mode, this);
+    return std::make_shared<NodeFile>(mode, this, rootPath);
   }
 
   std::shared_ptr<Directory> createDirectory(mode_t mode) override {
-    return std::make_shared<NodeDirectory>(mode, this);
+    return std::make_shared<NodeDirectory>(mode, this, rootPath);
   }
-
-  // TODO: symlink
 };
+
+// TODO: symlink
 
 extern "C" {
 
 backend_t wasmfs_create_node_backend(const char* root) {
   return wasmFS.addBackend(std::make_unique<NodeBackend>(root));
+}
+
+void EMSCRIPTEN_KEEPALIVE
+  _wasmfs_node_record_dirent(void* vec, const char* string, int type) {
+  auto& strings = *(std::vector<std::string>*)vec;
+  strings.push_back(string);
+  // TODO
 }
 
 } // extern "C"
