@@ -15,8 +15,8 @@ class NodeBackend;
 
 extern "C" {
 
-// TODO: JS function declarations
-void _wasmfs_node_readdir(const char* path);
+// JS function declarations
+void _wasmfs_node_readdir(const char* path, void* entries);
 
 } // extern "C"
 
@@ -45,22 +45,12 @@ private:
 
 class NodeDirectory : public Directory {
   std::string path;
-  std::optional<std::vector<Directory::Entry>> entries;
 
 public:
   NodeDirectory(mode_t mode, backend_t backend, std::string path)
-    : Directory(mode, backend), relativePath(path) {}
+    : Directory(mode, backend), path(path) {}
 
 private:
-  void maybeInitializeEntries() {
-    if (entries) {
-      return;
-    }
-    std::vector<std::string> names;
-    _wasmfs_node_readdir(path.c_str());
-    // TODO
-  }
-
   std::shared_ptr<File> getEntry(const std::string& name) override {
     // TODO
     return nullptr;
@@ -83,12 +73,13 @@ private:
   }
 
   size_t getNumEntries() override {
-    maybeInitializeEntries();
-    return entries->size();
+    // TODO
+    return 0;
   }
 
   std::vector<Directory::Entry> getEntries() override {
-    // TODO
+    std::vector<Directory::Entry> entries;
+    _wasmfs_node_readdir(path.c_str(), &entries);
     return {};
   }
 };
@@ -117,9 +108,9 @@ backend_t wasmfs_create_node_backend(const char* root) {
 }
 
 void EMSCRIPTEN_KEEPALIVE
-  _wasmfs_node_record_dirent(void* vec, const char* string, int type) {
-  auto& strings = *(std::vector<std::string>*)vec;
-  strings.push_back(string);
+_wasmfs_node_record_dirent(void* vec, const char* name, int type, int mode) {
+  auto& entries = *(std::vector<Directory::Entry>*)vec;
+  entries.push_back({string,
   // TODO
 }
 
