@@ -31,7 +31,11 @@ var LibraryPThread = {
     debugInit: function() {
       function pthreadLogPrefix() {
         var t = 0;
-        if (runtimeInitialized && !runtimeExited && typeof _pthread_self != 'undefined') {
+        if (runtimeInitialized && typeof _pthread_self != 'undefined'
+#if EXIT_RUNTIME
+        && !runtimeExited
+#endif
+        ) {
           t = _pthread_self();
         }
         return 'w:' + (Module['workerID'] || 0) + ',t:' + ptrToString(t) + ': ';

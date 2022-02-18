@@ -39,11 +39,10 @@ function run() {
   ___stdio_exit();
 #endif
 
+#if EXIT_RUNTIME
 #if ASSERTIONS
   runtimeExited = true;
 #endif
-
-#if EXIT_RUNTIME
   _proc_exit(ret);
 #endif
 #endif // PROXY_TO_PTHREAD
