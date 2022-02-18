@@ -65,14 +65,19 @@ private:
     if (!exists) {
       return nullptr;
     }
+    std::shared_ptr<File> child;
     if (S_ISREG(mode)) {
-      return std::make_shared<NodeFile>(mode, getBackend(), childPath);
+      child = std::make_shared<NodeFile>(mode, getBackend(), childPath);
     } else if (S_ISDIR(mode)) {
-      return std::make_shared<NodeDirectory>(mode, getBackend(), childPath);
+      child = std::make_shared<NodeDirectory>(mode, getBackend(), childPath);
     } else if (S_ISLNK(mode)) {
       // return std::make_shared<NodeSymlink>(mode, getBackend(), childPath);
     }
-    return nullptr;
+    if (!child) {
+      return nullptr;
+    }
+    child->locked().setParent(shared_from_this());
+    return child;
   }
 
   bool removeChild(const std::string& name) override {
