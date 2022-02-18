@@ -5,80 +5,77 @@
  */
 
 mergeInto(LibraryManager.library, {
-  $wasmFS$node$isWindows: !!process.platform.match(/^win/),
-  $wasmFS$node$flagsForNodeMap: (() => {
-    let flags = process["binding"]("constants");
-    // Node.js 4 compatibility: it has no namespaces for constants
-    if (flags["fs"]) {
-      flags = flags["fs"];
-    }
-    let flagsForNodeMap = {
-      "{{{ cDefine('O_APPEND') }}}": flags["O_APPEND"],
-      "{{{ cDefine('O_CREAT') }}}": flags["O_CREAT"],
-      "{{{ cDefine('O_EXCL') }}}": flags["O_EXCL"],
-      "{{{ cDefine('O_NOCTTY') }}}": flags["O_NOCTTY"],
-      "{{{ cDefine('O_RDONLY') }}}": flags["O_RDONLY"],
-      "{{{ cDefine('O_RDWR') }}}": flags["O_RDWR"],
-      "{{{ cDefine('O_DSYNC') }}}": flags["O_SYNC"],
-      "{{{ cDefine('O_TRUNC') }}}": flags["O_TRUNC"],
-      "{{{ cDefine('O_WRONLY') }}}": flags["O_WRONLY"],
-      "{{{ cDefine('O_NOFOLLOW') }}}": flags["O_NOFOLLOW"],
-    };
-#if ASSERTIONS
-      // The 0 define must match on both sides, as otherwise we would not
-      // know to add it.
-      assert(flagsForNodeMap["0"] === 0);
-#endif
-    return flagsForNodeMap;
-  })(),
-  $wasmFS$node$convertNodeCode: (e) => {
+  $wasmfs$node$isWindows: !!process.platform.match(/^win/),
+
+  $wasmfs$node$convertNodeCode__deps: ['$ERRNO_CODES'],
+  $wasmfs$node$convertNodeCode: function(e) {
     var code = e.code;
 #if ASSERTIONS
     assert(code in ERRNO_CODES, 'unexpected node error code: ' + code + ' (' + e + ')');
 #endif
     return ERRNO_CODES[code];
   },
-  // This maps the integer permission modes from http://linux.die.net/man/3/open
-  // to node.js-specific file open permission strings at http://nodejs.org/api/fs.html#fs_fs_open_path_flags_mode_callback
-  $wasmFS$node$flagsForNode: (flags) => {
-    // Ignore these flags from musl, otherwise node.js fails to open the file.
-    flags &= ~{{{ cDefine('O_PATH') }}};
-    flags &= ~{{{ cDefine('O_NONBLOCK') }}};
-    flags &= ~{{{ cDefine('O_LARGEFILE') }}};
-    // Node.js doesn't need this passed in, it errors.
-    flags &= ~{{{ cDefine('O_DIRECTORY') }}};
-    // Some applications may pass it; it makes no sense for a single process.
-    flags &= ~{{{ cDefine('O_CLOEXEC') }}};
 
-    var newFlags = 0;
-    for (var k in NODEFS.flagsForNodeMap) {
-      if (flags & k) {
-        newFlags |= NODEFS.flagsForNodeMap[k];
-        flags ^= k;
+  $wasmfs$node$lstat__deps: ['$wasmfs$node$isWindows', '$wasmfs$node$convertNodeCode'],
+  $wasmfs$node$lstat: function(path) {
+    let stat;
+    try {
+      // TODO: use throwIfNoEntry = false
+      console.log('statting', path);
+      stat = fs.lstatSync(path, {throwIfNoEntry: false});
+      if (stat === undefined) {
+        return undefined;
       }
+      if (wasmfs$node$isWindows) {
+        // Node.js on Windows never represents permission bit 'x', so
+        // propagate read bits to execute bits
+        stat.mode = stat.mode | ((stat.mode & 292) >> 2);
+      }
+    } catch (e) {
+      // TODO: return some error here instead of throwing.
+      if (!e.code) throw e;
+      throw new FS.ErrnoError(wasmfs$node$convertNodeCode(e));
     }
-    if (!flags) {
-      return newFlags;
-    } else {
-      // TODO: EINVAL
-      abort('EINVAL');
-    }
+    return stat;
   },
-  // TODO: copy more stuff from library_nodefs.js
 
-
-  _wasmfs_node_readdir: (path) => {
+  wasmfs_node_readdir__deps: ['$wasmfs$node$convertNodeCode'],
+  wasmfs_node_readdir: function(path_p, vec) {
+    let path = UTF8ToString(path_p);
     let entries;
     try {
       entries = fs.readdirSync(path, { withFileTypes: true });
     } catch (e) {
+      // TODO: return some error here instead of throwing.
       if (!e.code) throw e;
-      throw new FS.ErrnoError(NODEFS.convertNodeCode(e));
+      throw new FS.ErrnoError(wasmfs$node$convertNodeCode(e));
     }
     for (let entry of entries) {
-      console.log(entry.name);
+      withStackSave(() => {
+        let name = allocateUTF8OnStack(entry.name);
+        let type;
+        // TODO: Figure out how to use `cDefine` here.
+        if (entry.isFile()) {
+          type = 1;
+        } else if (entry.isDirectory()) {
+          type = 2;
+        } else if (entry.isSymbolicLink()) {
+          type = 3;
+        } else {
+          type = 0;
+        }
+        _wasmfs_node_record_dirent(vec, name, type);
+      });
     }
   },
 
-
+  wasmfs_node_get_mode__deps: ['$wasmfs$node$lstat'],
+  wasmfs_node_get_mode: function(path_p, mode_p) {
+    let stat = wasmfs$node$lstat(UTF8ToString(path_p));
+    if (stat === undefined) {
+      return 0;
+    }
+    {{{ makeSetValue('mode_p', 0, 'stat.mode', 'i32') }}}
+    return 1;
+  }
 });

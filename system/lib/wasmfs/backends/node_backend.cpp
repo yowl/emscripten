@@ -16,13 +16,18 @@ class NodeBackend;
 extern "C" {
 
 // JS function declarations
-void _wasmfs_node_readdir(const char* path, void* entries);
+void wasmfs_node_readdir(const char* path,
+                         std::vector<Directory::Entry>* entries);
+int wasmfs_node_get_mode(const char* path, mode_t* mode);
 
 } // extern "C"
 
 class NodeFile : public DataFile {
+  std::string path;
+
 public:
-  NodeFile(mode_t mode, backend_t backend) : DataFile(mode, backend) {
+  NodeFile(mode_t mode, backend_t backend, std::string path)
+    : DataFile(mode, backend), path(path) {
     // TODO: initialize node file
   }
 
@@ -51,17 +56,31 @@ public:
     : Directory(mode, backend), path(path) {}
 
 private:
-  std::shared_ptr<File> getEntry(const std::string& name) override {
-    // TODO
+  std::shared_ptr<File> getChild(const std::string& name) override {
+    auto childPath = path + '/' + name;
+    static_assert(std::is_same_v<mode_t, unsigned int>);
+    // TODO: also retrieve and set ctime, atime, ino, etc.
+    mode_t mode;
+    int exists = wasmfs_node_get_mode(childPath.c_str(), &mode);
+    if (!exists) {
+      return nullptr;
+    }
+    if (S_ISREG(mode)) {
+      return std::make_shared<NodeFile>(mode, getBackend(), childPath);
+    } else if (S_ISDIR(mode)) {
+      return std::make_shared<NodeDirectory>(mode, getBackend(), childPath);
+    } else if (S_ISLNK(mode)) {
+      // return std::make_shared<NodeSymlink>(mode, getBackend(), childPath);
+    }
     return nullptr;
   }
 
-  bool removeEntry(const std::string& name) override {
+  bool removeChild(const std::string& name) override {
     // TODO
     return false;
   }
 
-  std::shared_ptr<File> insertEntry(const std::string& name,
+  std::shared_ptr<File> insertChild(const std::string& name,
                                     std::shared_ptr<File> file) override {
     // TDOO
     return nullptr;
@@ -73,14 +92,14 @@ private:
   }
 
   size_t getNumEntries() override {
-    // TODO
-    return 0;
+    // TODO: optimize this?
+    return getEntries().size();
   }
 
   std::vector<Directory::Entry> getEntries() override {
     std::vector<Directory::Entry> entries;
-    _wasmfs_node_readdir(path.c_str(), &entries);
-    return {};
+    wasmfs_node_readdir(path.c_str(), &entries);
+    return entries;
   }
 };
 
@@ -107,11 +126,9 @@ backend_t wasmfs_create_node_backend(const char* root) {
   return wasmFS.addBackend(std::make_unique<NodeBackend>(root));
 }
 
-void EMSCRIPTEN_KEEPALIVE
-_wasmfs_node_record_dirent(void* vec, const char* name, int type, int mode) {
-  auto& entries = *(std::vector<Directory::Entry>*)vec;
-  entries.push_back({string,
-  // TODO
+void EMSCRIPTEN_KEEPALIVE wasmfs_node_record_dirent(
+  std::vector<Directory::Entry>* entries, const char* name, int type) {
+  entries->push_back({name, File::FileKind(type), 0});
 }
 
 } // extern "C"
