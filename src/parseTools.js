@@ -952,29 +952,25 @@ function expectToReceiveOnModule(name) {
 function makeRemovedModuleAPIAssert(moduleName, localName) {
   if (!ASSERTIONS) return '';
   if (!localName) localName = moduleName;
-  return `
-if (!Object.getOwnPropertyDescriptor(Module, '${moduleName}')) {
-  Object.defineProperty(Module, '${moduleName}', {
-    configurable: true,
-    get: function() {
-      abort('Module.${moduleName} has been replaced with plain ${localName}\
- (the initial value can be provided on Module,\
- but after startup the value is only looked for on a local variable of that name)')
-    }
-  });
-}`;
+  return `checkForReplacedModuleProp('${moduleName}', '${localName}');`;
 }
 
 // Make code to receive a value on the incoming Module object.
-function makeModuleReceive(localName, moduleName) {
+function makeModuleReceive(localName, moduleName, noAssert) {
   if (!moduleName) moduleName = localName;
   let ret = '';
-  if (expectToReceiveOnModule(moduleName)) {
+  if (!expectToReceiveOnModule(moduleName)) {
+    if (ASSERTIONS) {
+      ret = `reportIgnoredModuleProp('${moduleName}');`;
+    }
+  } else {
     // Usually the local we use is the same as the Module property name,
     // but sometimes they must differ.
-    ret = `\nif (Module['${moduleName}']) ${localName} = Module['${moduleName}'];`;
+    ret = `if (Module['${moduleName}']) ${localName} = Module['${moduleName}'];`;
   }
-  ret += makeRemovedModuleAPIAssert(moduleName, localName);
+  if (!noAssert) {
+    ret += makeRemovedModuleAPIAssert(moduleName, localName);
+  }
   return ret;
 }
 
@@ -985,14 +981,14 @@ function makeModuleReceiveWithVar(localName, moduleName, defaultValue, noAssert)
     if (defaultValue) {
       ret += ' = ' + defaultValue;
     }
-    ret += ';';
-  } else {
-    if (defaultValue) {
-      ret += ` = Module['${moduleName}'] || ${defaultValue};`;
-    } else {
-      ret += ';' + makeModuleReceive(localName, moduleName);
-      return ret;
+    if (ASSERTIONS) {
+      ret += `;\nreportIgnoredModuleProp('${moduleName}');`;
     }
+  } else if (defaultValue) {
+    ret += ` = Module['${moduleName}'] || ${defaultValue};`;
+  } else {
+    ret += ';\n' + makeModuleReceive(localName, moduleName, noAssert);
+    return ret;
   }
   if (!noAssert) {
     ret += makeRemovedModuleAPIAssert(moduleName, localName);
